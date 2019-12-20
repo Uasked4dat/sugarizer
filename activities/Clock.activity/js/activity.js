@@ -58,6 +58,18 @@ define(["sugar-web/activity/activity","sugar-web/env","sugar-web/graphics/radiob
                 'seconds': 0
             };
 
+            this.index = {
+                'hours': 0,
+                'minutes': 0,
+                'seconds': 0
+            };
+            
+            this.manualHandAngles = {
+                'hours': 0,
+                'minutes': 0,
+                'seconds': 0
+            };
+
             this.colors = {
                 'black': "#000000",
                 'white': "#FFFFFF",
@@ -65,7 +77,8 @@ define(["sugar-web/activity/activity","sugar-web/env","sugar-web/graphics/radiob
                 'minutes': "#00B20D",
                 'seconds': "#E6000A"
             };
-            
+
+            this.setTimeMode = false;
             this.writeTime = false;
             this.writeDate = false;
 
@@ -103,12 +116,22 @@ define(["sugar-web/activity/activity","sugar-web/env","sugar-web/graphics/radiob
             document.getElementById("write-date-button").title = l10n_s.get("WriteDate");
             document.getElementById("text-time").innerHTML = l10n_s.get("WhatTime");
         }
+       
+        Clock.prototype.toggleSetTimeMode = function () {
+            this.setTimeMode = !this.setTimeMode
+            this.update();
+            this.drawHands();
+            
+        }
 
         Clock.prototype.start = function (face) {
             this.updateSizes();
             this.drawBackground();
+            this.AllHandAngles = {"hours": this.generateHourHandAngles(), "minutes": this.generateMinuteHandAngles(),
+            "seconds": this.generateMinuteHandAngles()};
             this.update();
             this.drawHands();
+            
 
             this.previousTime = Date.now();
             this.tick();
@@ -240,11 +263,47 @@ define(["sugar-web/activity/activity","sugar-web/env","sugar-web/graphics/radiob
                 this.textDateElem.innerHTML = momentDate.format('LLLL').replace(momentDate.format('LT'), '');
             }
 
-            this.handAngles.hours = Math.PI - (Math.PI / 6 * hours +
-                Math.PI / 360 * minutes);
 
-            this.handAngles.minutes = Math.PI - Math.PI / 30 * minutes;
-            this.handAngles.seconds = Math.PI - Math.PI / 30 * seconds;
+            if (!this.setTimeMode) {
+                this.handAngles.hours = Math.PI - (Math.PI / 6 * hours +
+                    Math.PI / 360 * minutes);
+    
+                this.handAngles.minutes = Math.PI - Math.PI / 30 * minutes;
+                this.handAngles.seconds = Math.PI - Math.PI / 30 * seconds;
+
+                // this.manualHandAngles.minutes = clock.findClosestAngle(this.handAngles.minutes, this.AllHandAngles.minutes)
+                // this.manualHandAngles.seconds = clock.findClosestAngle(this.handAngles.seconds, this.AllHandAngles.seconds)
+                // this.manualHandAngles.hours = clock.findClosestAngle(this.handAngles.hours, this.AllHandAngles.hours) 
+            } else {
+                this.handAngles.hours = this.manualHandAngles.hours;
+                this.handAngles.minutes = this.manualHandAngles.minutes;
+                this.handAngles.seconds = this.manualHandAngles.seconds;
+
+                this.index.hours = this.findAngleIndex(this.handAngles.hours, 'hours')
+                this.index.minutes = this.findAngleIndex(this.handAngles.minutes, 'minutes')
+                this.index.seconds = this.findAngleIndex(this.handAngles.seconds, 'seconds')
+            }
+            
+        }
+
+        Clock.prototype.generateMinuteHandAngles = function () {
+            var minuteHandAngles = []
+            for (i = 0; i < 60; i++) {
+                //Dealing with valid angles for all hands
+                minuteHandAngles.push(Math.PI - Math.PI / 30 * i)
+            }
+            return minuteHandAngles
+        }
+
+        Clock.prototype.generateHourHandAngles = function () {
+            hourHandAngles = []
+            for (i =0; i<12; i++) {
+                for (j=0; j<60; j++) {
+                    hourHandAngles.push(this.handAngles.hours = Math.PI - (Math.PI / 6 * i +
+                        Math.PI / 360 * j))
+                }
+            }
+            return hourHandAngles
         }
 
         Clock.prototype.drawBackground = function () {
@@ -355,13 +414,16 @@ define(["sugar-web/activity/activity","sugar-web/env","sugar-web/graphics/radiob
             }
         }
 
+        var circleCoordinates = {'hours': {}, 'minutes': {}, 'seconds': {}, 'center': {}}
         // Draw the hands of the analog clocks.
         Clock.prototype.drawHands = function () {
             var ctx = this.clockCanvasElem.getContext("2d");
-
+            
+            
             // Clear canvas first.
+            
             ctx.clearRect(this.margin, this.margin, this.radius * 2,
-                          this.radius * 2);
+                this.radius * 2);
 
             var handNames = ['hours', 'minutes', 'seconds'];
             for (var i = 0; i < handNames.length; i++) {
@@ -379,13 +441,81 @@ define(["sugar-web/activity/activity","sugar-web/env","sugar-web/graphics/radiob
                     this.centerY + this.handSizes[name] *
                         Math.cos(this.handAngles[name]));
                 ctx.stroke();
+                if (this.setTimeMode) {
+                    ctx.beginPath();
+                    var tipX = this.centerX + this.handSizes[name] * Math.sin(this.handAngles[name]);
+                    var tipY = this.centerY + this.handSizes[name] * Math.cos(this.handAngles[name]);
+                    ctx.arc((tipX + this.centerX) /2, (tipY + this.centerY)/2, this.radius/15, 0, 2 * Math.PI)
+                    ctx.fillStyle = "white";
+                    ctx.lineWidth = 6;
+                    ctx.stroke();
+                    ctx.fill();
+                    circleCoordinates[handNames[i]]['x'] = (tipX + this.centerX) /2;
+                    circleCoordinates[handNames[i]]['y'] = (tipY + this.centerY) /2;
+                    circleCoordinates[handNames[i]]["radius"] = this.radius/15;
+                    circleCoordinates['center']['centerx'] = this.centerX;
+                    circleCoordinates['center']['centery'] = this.centerY;
+                }
+            }   
+        }
+
+        Clock.prototype.findHandAngleFromCoordinates = function(diffX, diffY) {
+            // Deals with 180 and 90 degrees manually
+            var degree = false
+            if (diffX === 0) {
+                degree = (diffY > 0) ? 180 : 0;
+            } else if (diffY === 0) {
+                degree = (diffX > 0) ? 90 : -90;
+            } else if (diffX > 0 && diffY > 0) {
+                degree = Math.atan(diffY/diffX) * 180 / Math.PI
+                degree += 90;
+            } else if ((diffX > 0 && diffY < 0) || (diffX < 0 && diffY < 0)) {
+                degree = (Math.atan(diffX/diffY) * 180 / Math.PI) * -1
+            } else if (diffX < 0 && diffY > 0) {
+                degree = Math.atan(diffY/diffX) * 180 / Math.PI
+                degree -= 90;
             }
+            // Converts angle from degrees into radians
+            degree = degree * Math.PI / 180
+            return degree
+        }
+
+        Clock.prototype.findClosestAngle = function(mouseAngle, handAngles) {
+            var current = handAngles[0]
+            for (i = 0; i<handAngles.length; i++) {
+                if (Math.abs(mouseAngle - handAngles[i] < Math.abs(mouseAngle - current))) {
+                    current = handAngles[i]
+                }
+            }
+            return current
+        }
+
+        Clock.prototype.findAngleIndex = function(angleValue, handName) {
+            for (i = 0; i < 720 ; i++) {
+                if (clock.AllHandAngles[handName][i] === angleValue) {
+                    return i
+                }
+            }
+        }
+
+        Clock.prototype.updateIndex = function(clickedHand, direction) {
+            if (direction && this.index[clickedHand] < this.AllHandAngles[clickedHand].length -1) {
+                this.index[clickedHand] += 1
+            } else if (direction && this.index[clickedHand] == this.AllHandAngles[clickedHand].length -1) {
+                this.index[clickedHand] = 0
+            } else if (!direction && this.index[clickedHand] > 0) {
+                this.index[clickedHand] -= 1
+            } else if (!direction && this.index[clickedHand] == 0) {
+                this.index[clickedHand] = this.AllHandAngles[clickedHand].length -1
+            }
+            this.manualHandAngles[clickedHand] = this.AllHandAngles[clickedHand][this.index[clickedHand]]
         }
 
         // Create the clock.
 
         var clock = new Clock();
         clock.start();
+        
 
         // UI controls.
 
@@ -416,6 +546,91 @@ define(["sugar-web/activity/activity","sugar-web/env","sugar-web/graphics/radiob
             var active = this.classList.contains('active');
             clock.changeWriteDate(active);
         };
+
+        function checkIfClickOnCircle(mouseX, mouseY, hand) {
+            var tempReadings = circleCoordinates;
+            x = mouseX - tempReadings[hand]['x'] ;
+            y = mouseY - tempReadings[hand]['y'] ;
+            distance = Math.sqrt(x**2 + y**2)
+            if (distance <= tempReadings[hand]['radius']) {
+                return true;
+            } else {
+                return false;
+            };
+        }
+
+        var ctx = clock.clockCanvasElem.getContext("2d");
+
+        ctx.canvas.addEventListener('mousemove', function (event) {
+            var mouseX = event.clientX - canvas.offsetLeft;
+            var mouseY = event.clientY - canvas.offsetTop;
+            
+            if(clock.mouseDown){
+                clock.manualHandAngles[clock.clickedHand] = clock.findClosestAngle(clock.mouseAngle, clock.AllHandAngles[clock.clickedHand])
+                var diffX = mouseX - clock.centerX;
+                var diffY = clock.centerY - mouseY;
+                clock.mouseAngle = clock.findHandAngleFromCoordinates(diffX, diffY)
+
+                var hours = clock.findAngleIndex(clock.manualHandAngles.hours, 'hours')
+                var minutes = clock.findAngleIndex(clock.manualHandAngles.minutes, 'minutes')
+                
+                // console.log(clock.index.minutes)
+                if (hours !== 0 && minutes !== 0) {
+                    if (clock.clickedHand === 'hours' && clock.index.hours > hours) {
+                        clock.updateIndex('minutes', false)
+                    } else if (clock.clickedHand === 'hours' && clock.index.hours < hours) {
+                        clock.updateIndex('minutes', true)
+                    } else if (clock.clickedHand === 'minutes' && clock.index.minutes > minutes) {
+                        clock.updateIndex('hours', false)
+                    } else if (clock.clickedHand === 'minutes' && clock.index.minutes < minutes) {
+                        clock.updateIndex('hours', true)
+                    }
+                    console.log(hours)
+                } else {
+                    if (clock.clickedHand === 'minutes' && minutes == 0) {
+                        clock.updateIndex('hours', true)
+                    } 
+                    console.log("Hours: ", hours)
+                    console.log("minutes:", minutes)
+                }
+
+                
+                clock.update();
+                clock.drawHands();
+            }
+        });
+  
+        ctx.canvas.addEventListener('mouseup', function () {
+            clock.mouseDown = false;
+        });
+
+        ctx.canvas.addEventListener('mousedown', function (event) {
+            mouseX = event.clientX - canvas.offsetLeft;
+            mouseY = event.clientY - canvas.offsetTop;
+            
+            
+            clickHours = checkIfClickOnCircle(mouseX, mouseY, 'hours');
+            clickMinutes = checkIfClickOnCircle(mouseX, mouseY, 'minutes');
+            clickSeconds = checkIfClickOnCircle(mouseX, mouseY, 'seconds');
+
+            // deals with overlap of hands
+            var names = ['seconds', 'minutes', 'hours'];
+            var clickTally = [clickSeconds, clickMinutes, clickHours];
+            for (i=0; i<clickTally.length; i++) {
+                if (clickTally[i]) {
+                    clock.mouseDown = true;
+                    clock.clickedHand = names[i]
+                    break;
+                }
+            }
+            
+        });
+
+        var setTimeMode = document.getElementById("set-time-mode");
+        setTimeMode.onclick = function () {
+            clock.toggleSetTimeMode();
+            document.getElementById('set-time-mode').classList.toggle('active');
+        }
 
         document.getElementById("stop-button").addEventListener('click', function (event) {
             activity.getDatastoreObject().setDataAsText(array);

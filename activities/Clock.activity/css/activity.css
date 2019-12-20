@@ -50,3 +50,8 @@ canvas {
 #main-toolbar #write-date-button {
   background-image: url(../icons/write-date.svg);
 }
+
+#main-toolbar #set-time-mode {
+  background-image: url(../icons/clicker.svg);
+  background-size: 85%;
+}
